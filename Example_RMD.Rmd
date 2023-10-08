@@ -3,9 +3,9 @@ title: "Пример RMD-ноутбука"
 author: "Olga Potanina"
 date: "2023-10-08"
 output:
+  word_document: default
   html_document:
     df_print: paged
-  word_document: default
 ---
 
 # Описание данных
@@ -19,7 +19,7 @@ library(flextable)
 iris <- iris
 ```
 
-В данных содержится `r nrow (iris)` наблюдений, пропущенные значения отсутствуют. Ниже представлены описательные статистики переменных датасета без выделения отдельных групп. 
+В данных содержится `r nrow (iris)` наблюдений, пропущенные значения отсутствуют. Ниже представлены описательные статистики переменных датасета без выделения отдельных групп.
 
 ```{r 1, echo = FALSE, message=FALSE}
 as.data.frame (summary (iris, digits=2), na.rm = T) %>% 
@@ -34,7 +34,11 @@ as.data.frame (summary (iris, digits=2), na.rm = T) %>%
   width (j = 'Значение', width = 1.2)
 ```
 
-![На изображении можно увидеть доли внутреннего (Petal) и наружного (Sepal) околоцветников, длина (Length) и ширина (Width) которых представленны в данных.](iris.jpg)
+![На изображении [^1] можно увидеть доли внутреннего (Petal) и наружного (Sepal) околоцветников, длина (Length) и ширина (Width) которых представленны в данных.](iris.png)
+
+[^1]: Изображение было загружено с сайта [www.kaggle.com](https://www.kaggle.com/code/sunaysawant/iris-eda-pca/notebook "ссылка на страницу с изображением")
+
+[^2]: Изображение было загружено с сайта [www.kaggle.com](https://www.kaggle.com/code/sunaysawant/iris-eda-pca/notebook "ссылка на страницу с изображением")
 
 # Описательные статистики переменных датасета в зависимости от вида ириса
 

@@ -21,8 +21,8 @@ iris <- iris
 ```{r 1, echo = FALSE}
 summary (iris, digits=2)
 ```
-# 
-```{r 2}
+# Основные статистики в зависимости от вида 
+```{r 2, echo=FALSE, message=FALSE}
 statistics <- list(
       `Количество` = ~sum(!is.na(.x)) %>% as.character(),
       `Ср. знач.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", mean(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
@@ -39,8 +39,11 @@ iris %>%
   pivot_longer (!'Species') %>% 
   separate(name, into = c("Переменная", "Статистика"), sep = "_") %>% 
   rename("Вид" = Species, "Значение" = value) %>% 
-  flextable() %>% theme_box() %>%
+  flextable() %>% theme_box() %>%  
   merge_v (c ("Вид", "Переменная")) %>% 
-  align(align = "center")
+  align (align = "center") %>% 
+  width (j = 'Вид', width = 1) %>% 
+  width (j = 'Переменная', width = 1.1) %>% 
+  width (j = 'Статистика', width = 1.4)
 
 ```

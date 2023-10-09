@@ -1,0 +1,374 @@
+---
+title: "automatization_notebook_03"
+output:
+  word_document: default
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readr)
+library(flextable)
+```
+
+# Чтение данных 
+
+```{r, message=FALSE}
+framingham <- read_csv ("framingham.csv")
+```
+
+# Общее описание данных
+
+Используемые данные находятся в открытом доступе на сайте [kaggle.com](https://www.kaggle.com/datasets/dileep070/heart-disease-prediction-using-logistic-regression/ "Ссылка на страницу с данными"). Анализируемый датасет содержит информацию о более чем 4 тысячах жителей города Framingham (Massachusetts, USA), включающую различные потенциальные факторы риска и исход (диагностирование или нет ишемической болезни сердца в течение 10 лет наблюдения).
+
+```{r, eval=TRUE}
+framingham %>% glimpse()
+```
+
+# Очистка данных
+
+## Поиск переменных с долей пропущенных значений более 20%
+
+```{r}
+framingham_more_than_20_cols <- framingham %>% 
+  select (where (function(x) sum (is.na(x))/ nrow(framingham) * 100 > 20))
+  ifelse (ncol (framingham_more_than_20_cols) > 0, 
+          framingham_more_than_20_cols, 
+          "Переменных с долей пропущенных значений более 20% не выявлено")
+```
+
+## Поиск субъектов со слишком большим количеством пропущенных значений
+
+```{r}
+  framingham_shortened <- framingham [apply (framingham, 1, function(x) sum (is.na(x))/ ncol (framingham) * 100 < 10), ]
+```
+
+*Выбраны субъекты с долей пропущенных значений менее 10%*
+
+## Переименовывание, приведение переменных к нужному типу, сортировка по возрасту
+
+```{r}
+cleaned_data <- framingham_shortened %>% 
+  rename (Male = male, Age = age, Education = education, 
+        'Current Smoker'= currentSmoker, 'Cigarettes per day' = cigsPerDay,
+        'Blood pressure medication' = BPMeds, 'Stroke in history'= prevalentStroke,
+        'Hypertension in history' = prevalentHyp, 'Diabets in history' = diabetes, 
+        'Total cholesterol' = totChol, 'Systolic blood pressure' = sysBP, 
+        'Diastolic blood pressure' = diaBP, 'Heart rate' = heartRate,
+        Glucose = glucose, '10 year risk of CHD' = TenYearCHD) %>% 
+  mutate_at (c('Male', 'Education', 'Current Smoker', 'Blood pressure medication',
+              'Stroke in history', 'Hypertension in history', 'Diabets in history',
+              '10 year risk of CHD'), as.factor) %>% 
+  mutate_at (c('Age','Cigarettes per day', 'Total cholesterol', 'Systolic blood pressure',
+               'Diastolic blood pressure', 'BMI', 'Heart rate', 'Glucose'), as.numeric) %>% 
+  arrange (desc (Age))
+```
+
+## Создание файла outliers.csv с субъектами, которые являются выбросами
+
+```{r}
+outliers <- cleaned_data %>% 
+  mutate_at (c('Male', 'Education', 'Current Smoker', 'Blood pressure medication',
+              'Stroke in history', 'Hypertension in history', 'Diabets in history',
+              '10 year risk of CHD'), as.numeric) %>%
+  filter(if_any(.cols = everything(), .fns = function(x) abs(x - mean(x, na.rm = TRUE)) > 3*sd(x, na.rm = TRUE)))
+
+write_csv (outliers, "outliers.csv")
+```
+
+# Сколько осталось переменных?
+
+```{r}
+ncol(cleaned_data)
+```
+
+# Сколько осталось случаев?
+
+```{r}
+nrow (cleaned_data) 
+```
+
+# Есть ли в данных идентичные строки?
+
+```{r}
+ifelse (nrow(unique(cleaned_data)) == nrow (cleaned_data), 
+        "Идентичных строк нет",
+        paste ("В данных",  nrow(cleaned_data) - nrow(unique(cleaned_data)), "повторяющихся строк" ))
+```
+
+# Сколько всего переменных с пропущенными значениями в данных и сколько пропущенных точек в каждой такой переменной?
+
+```{r}
+paste("В данных", 
+      ncol(cleaned_data %>% select(where(anyNA))), 
+         "переменных с пропущенными значениями")
+```
+
+Ниже представлено количество пропущенных точек в каждой из таких переменных
+
+```{r}
+cleaned_data %>%
+  select(where(anyNA)) %>%
+  sapply (function (x) sum(is.na(x)))
+```
+
+# Описательные статистики
+
+## Количественные переменные
+
+```{r, error=FALSE}
+statistics <- list(
+      `Количество субъектов` = ~length(.x) %>% as.character(),
+      `Количество пропущенных значений` = ~sum(is.na(.x)) %>% as.character(),
+      `Среднее` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", mean(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
+      `Станд. отклон.` = ~ifelse(sum(!is.na(.x)) < 3, "Н/П*", sd(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
+      `мин. - макс.` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(min(.x, na.rm = TRUE) %>% round(2), " - ", max(.x, na.rm = TRUE) %>% round(2))),
+      `Медиана` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", median(.x, na.rm = TRUE) %>% round(2) %>% as.character()),
+      `Q1 - Q3` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", paste0(quantile(.x, 0.25, na.rm = TRUE) %>% round(2), " - ", quantile(.x, 0.75, na.rm = TRUE) %>% round(2))),
+      `Межквартильный размах` = ~ifelse(sum(!is.na(.x)) == 0, "Н/П*", IQR(.x, na.rm = TRUE) %>% round(2) %>% as.character())
+)
+
+cleaned_data %>%
+  select('10 year risk of CHD', where(is.numeric)) %>%
+  group_by (`10 year risk of CHD`) %>% 
+  summarise(across(where(is.numeric), statistics)) %>%
+  mutate_at (1:ncol(cleaned_data), as.character) %>% 
+  pivot_longer(!'10 year risk of CHD') %>% 
+  separate(name, into = c('Переменная', 'Статистика'), sep = '_') %>% 
+  rename ('Значение' = value) %>% 
+  flextable() %>% 
+  theme_box() %>% 
+  merge_v(c("10 year risk of CHD", "Переменная")) %>% 
+  width(j= "Статистика", width=3) %>% 
+  align (j = c("10 year risk of CHD", "Переменная"), align = "center")
+```
+
+## Категориальные переменные
+
+#### 10-летний риск ИБС и пол
+
+```{r}
+cleaned_data %>%
+  select('10 year risk of CHD', Male) %>%
+  count (`10 year risk of CHD`, Male) %>%
+  group_by (`10 year risk of CHD`) %>%
+  mutate ('Relative quantity' = (n/sum(n)) %>% round (3) %>% `*` (100) %>% str_c ("%")) %>% 
+  rename ('Absolute quantity' = n) %>% 
+  flextable() %>% theme_box() %>% 
+  merge_v("10 year risk of CHD") %>% 
+  align (align = "center") %>% 
+  set_caption ("Numbers of people depending on '10 year risk of CHD' and 'Male gender'")
+```
+
+#### 10-летний риск ИБС и образование
+
+```{r}
+cleaned_data %>%
+  select('10 year risk of CHD', Education) %>%
+  mutate (`Education` = `Education` %>% as.character() %>% replace_na ("Нет данных") %>% as.factor()) %>% 
+  count (`10 year risk of CHD`, Education) %>%
+  group_by (`10 year risk of CHD`) %>%
+  mutate ('Relative quantity' = (n/sum(n)) %>% round (3) %>% `*` (100) %>% str_c ("%")) %>% 
+  rename ('Absolute quantity' = n) %>% 
+  flextable() %>% theme_box() %>% 
+  merge_v("10 year risk of CHD") %>% 
+  align (align = "center") %>% 
+  set_caption ("Numbers of people depending on '10 year risk of CHD' and 'Education'")
+```
+
+#### 10-летний риск ИБС и курение
+
+```{r}
+cleaned_data %>%
+  select('10 year risk of CHD', `Current Smoker`) %>%
+  count (`10 year risk of CHD`, `Current Smoker`) %>%
+  group_by (`10 year risk of CHD`) %>%
+  mutate ('Relative quantity' = (n/sum(n)) %>% round (3) %>% `*` (100) %>% str_c ("%")) %>% 
+  rename ('Absolute quantity' = n) %>% 
+  flextable() %>% theme_box() %>% 
+  merge_v("10 year risk of CHD") %>% 
+  align (align = "center")  %>% 
+  set_caption ("Numbers of people depending on '10 year risk of CHD' and Smoking status")
+```
+
+# Визуализация
+
+## Количественные переменные
+
+#### 10-летний риск ИБС и возраст
+
+```{r}
+library (ggplot2)
+library(RColorBrewer)
+
+numeric_data <- cleaned_data %>% 
+  select (`10 year risk of CHD`, where (is.numeric)) %>%
+  mutate (`10 year risk of CHD` = ifelse (`10 year risk of CHD` == 1, "Yes", "No"))
+
+ggplot (numeric_data, aes(x = `10 year risk of CHD`, y = Age, fill =`10 year risk of CHD`)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette="OrRd")
+```
+
+#### 10-летний риск ИБС и количество сигарет в день
+
+```{r}
+library (ggplot2)
+library(RColorBrewer)
+
+ggplot (numeric_data, aes(x = `10 year risk of CHD`, y = `Cigarettes per day`, fill =`10 year risk of CHD`)) +
+  geom_boxplot(na.rm = T) +
+  scale_fill_brewer(palette="Greens")
+```
+
+```{r}
+library (ggplot2)
+library(RColorBrewer)
+
+ggplot (numeric_data, aes(x = `10 year risk of CHD`, y = `Total cholesterol`, fill =`10 year risk of CHD`)) +
+  geom_boxplot(na.rm = T) +
+  scale_fill_brewer(palette="PuRd")
+```
+
+## Категориальные переменные
+
+```{r}
+library (ggplot2)
+library(RColorBrewer)
+
+categorical_data <- cleaned_data %>% 
+  select(`10 year risk of CHD`, where(is.factor)) %>% 
+  mutate (`10 year risk of CHD` = ifelse (`10 year risk of CHD` == 1, "Да", "Нет")) %>%
+  rename (Gender = Male) %>% 
+  mutate (`Gender` = ifelse (`Gender` == 1, "Male", "Female"))
+
+
+ggplot (categorical_data, aes(x = `Gender`, fill =`10 year risk of CHD`)) +
+  geom_bar (na.rm = T) +
+  scale_fill_brewer(palette="PuRd")
+
+```
+
+# Статистические оценки
+
+## Проверка на нормальность
+
+1)  Оценка переменных на соответствие нормальному распределению с помощью теста Шапиро-Уилка
+
+```{r}
+shapiro_p <- cleaned_data %>% 
+  mutate_at (c('Male', 'Education', 'Current Smoker', 'Blood pressure medication', 'Stroke in history', 'Hypertension in history', 'Diabets in history', '10 year risk of CHD'), as.numeric) %>% 
+  summarise(across (where (is.numeric), 
+            function (x) shapiro.test(x)$p)) %>% 
+  select(where (function(x) sum (x) > 0.05))
+
+ifelse (ncol (shapiro_p) == 0, "В датасете данные всех переменнных распределены нормально, т.к. отсутствуют переменные, для которых p.value, полученное с помощью теста Шапиро–Уилка, менее 0.05", "В данных имеются переменные, распределение которых значимо отличается от нормального")
+
+```
+
+2)  QQ-плоты для каждой количественной переменной
+
+```{r}
+
+cleaned_data %>% 
+  select(where (is.numeric)) %>% 
+  sapply (function(x) c (qqnorm(x), qqline (x)))
+
+```
+
+*QQ-плот для переменной Glucose демонстрирует явное отклонение распределения от нормального. На мой взгляд, использование теста Шапиро--Уилка боллее предпочтительно, так как он лишен субъективности.*
+
+3)  Другие методы проверки на нормальность и их ограничения.
+
+**1. Построение гистограммы с помощью *hist (x)***
+
+-   **метод субъективен**
+
+**2. Тест Колмогорова Смирнова с помощью *ks.test (x, 'pnorm')***
+
+-   **необходима выборка размером более 50**
+
+## Сравнение групп по 10 year risk of CHD
+
+```{r}
+options (scipen = 999)
+cleaned_data %>%
+  select('10 year risk of CHD', where(is.numeric)) %>%
+  summarise(across(where(is.numeric), function(x) 
+    t.test (x ~ `10 year risk of CHD`)$p.value)) %>% 
+  round(3) %>% 
+  summarise(across(where(is.numeric), function(x) 
+    ifelse (x < 0.001, "< 0.001", x))) %>%
+  flextable() %>% theme_box() %>% 
+  bold (i = 1, j = c(1,2,3,4,5,6,8), part = "body") %>% 
+  set_caption ("Results (p values) of comparing numerical variables by t.test") 
+
+```
+
+*Для сравнения количественных переменных использовался t.test, так как все выбранные переменные имеют нормальное распределения по результатам теста Шапиро-Уилка*
+
+```{r}
+options (scipen = 999)
+cleaned_data %>%
+  select('10 year risk of CHD', where(is.factor)) %>%
+  mutate('10 year risk of CHD' = as.character('10 year risk of CHD')) %>% 
+  summarise(across(where(is.factor), 
+                   function(x) chisq.test (table (x, `10 year risk of CHD`))$p.value)) %>%
+  round(3) %>% 
+  summarise(across(where(is.numeric), function(x)
+    ifelse (x < 0.001, "< 0.001", x))) %>%
+  flextable() %>% theme_box() %>% 
+  bold (i = 1, j = c(1,2,4,5,6,7), part = "body") %>% 
+  set_caption ("Results (p values) of comparing categorical variables by chisq.test")
+```
+
+## Корреляционный анализ
+
+### Корреляционная матрица [^1]
+[^1]: поправка на множественные сравнения пока не сделана.
+
+```{r}
+library (psych)
+options (scipen = 999)
+
+as.data.frame(
+  (cleaned_data %>%
+  select(where(is.numeric)) %>% 
+  corr.test())$r %>% round (2)
+  ) 
+  
+```
+
+```{r}
+library (psych)
+options (scipen = 999)
+
+as.data.frame ((cleaned_data %>%
+  select(where(is.numeric)) %>% 
+  corr.test())$p %>% round (4))
+
+```
+
+### Визуализация
+
+```{r}
+library (corrplot)
+cleaned_data %>%
+  select(where(is.numeric)) %>% 
+  cor (use = "complete.obs")  %>% 
+  corrplot()
+```
+
+*Корреляционные матрицы удобно использовать, чтобы быстро выявить сильно корреллирующие переменные. Недостаток корреляционных исследований в том, что они не могут ответить на вопрос о причинно-следственной связи и для расчёта коэффициента корреляции можно использовать только две переменные.*
+
+## Моделирование
+
+1)  Постройте регрессионную модель для переменной **TenYearCHD**. Опишите процесс построения
+
+```{r}
+
+
+
+```

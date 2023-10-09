@@ -1,0 +1,22 @@
+---
+title: "Пример RMD-ноутбука"
+author: "Olga Potanina"
+date: "2023-10-08"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+В данном примере RMD-ноутбука рассматривается датасет "Ирисы Фишера", более подробную информацию о котором можно изучить на сайте [wikipedia.org](https://ru.wikipedia.org/wiki/Ирисы_Фишера "Ирисы Фишера")
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+iris <- iris
+```
+
+В данных содержится `r nrow (iris)` наблюдений. Ниже представлены описательные статистики переменных датасета.
+
+```{r}
+summary (iris, digits=2)
+?summary
+```

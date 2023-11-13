@@ -1,0 +1,299 @@
+---
+title: "homework2"
+author: "Olga Potanina"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(plotly)
+```
+
+$~$
+
+## 1. Данные
+
+*Для анализа будут использованы данные с основными показателями, с помощью котрых рассчитывается ожидаемая продолжительности жизни по метрике World Development Indicator в разных странах (для женщин в 2019 г.). Данные доступны по [ссылке](https://www.kaggle.com/datasets/kiranshahi/life-expectancy-dataset/data/ "www.kaggle.com").*
+
+```{r}
+life_expectancy_data <- read_rds("life_expectancy_data.RDS")
+```
+
+$~$
+
+## 2. Интерактивный plotly график
+
+```{r, message=F, fig.align = "center"}
+plot_ly(
+  data = life_expectancy_data,
+  x = ~ `Tuberculosis Incidence`,
+  y = ~ `Life expectancy`,
+  color = ~ continent,
+  colors = "Dark2",
+  marker = list(size = 3),
+  showlegend = FALSE)  %>%
+  layout(
+    title = "Ожидаемая продолжительности жизни и туберкулез",
+    yaxis = list(title = "Ожидаемая продолжительность жизни",
+                 zeroline = FALSE),  
+    xaxis = list(title = "Заболеваемость туберкулезом",
+                 zeroline = FALSE)) 
+```
+
+$~$
+
+## 3. Сравнение ожидаемой продолжительности жизни в Африке и Америке
+
+```{r, fig.align = "center", message=F}
+library(rstatix)
+library(ggpubr)
+
+stat_test <- life_expectancy_data %>% 
+  filter(continent == "Africa" | continent == "Americas") %>% 
+  t_test(`Life expectancy` ~ continent)
+
+ggboxplot(life_expectancy_data %>% 
+  filter(continent == "Africa" | continent == "Americas"),
+  x = "continent", y = "Life expectancy", 
+  fill = "continent", palette = c ("#EFAD9F", "#8F989B"),
+  add = "jitter") +
+  stat_pvalue_manual(stat_test, label = "T-test, p = {p}", y.position = 53)
+```
+
+$~$
+
+## 4. Корреляционный анализ
+
+#### Вариант 1
+
+```{r, fig.align = "center", message=F}
+library(corrplot)
+
+numeric_life_expectancy_data <- life_expectancy_data %>% 
+  select(where (is.integer) | where (is.numeric), -Year)
+
+corrplot(cor(numeric_life_expectancy_data), method = 'ellipse', order = 'AOE', type = 'upper', diag = FALSE, tl.col = "black", tl.cex = 0.7)
+```
+
+#### Вариант 2
+
+```{r, fig.align = "center", message=F, fig.height=6, fig.width=7}
+library(corrr)
+
+numeric_life_expectancy_data %>% 
+  correlate() %>% 
+  shave () %>% 
+  rplot(shape = 15, colors = c("black", "red")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+$~$
+
+## 5. Иерархическая кластеризация
+
+```{r, fig.align = "center", message=FALSE, warning=FALSE}
+library(factoextra)
+
+distance_matrix <- numeric_life_expectancy_data %>% 
+  scale() %>% 
+  dist(method = "euclidean") 
+
+  fviz_dend(
+    hclust(d=distance_matrix, method = "ward.D2"),
+          cex = 0.1,
+    main = "Кластерная дендрограмма стран")
+  
+```
+
+$~$
+
+## 6. Heatmap и иерархическая кластеризация
+
+```{r, fig.align = "center", message=FALSE, warning=FALSE}
+library(pheatmap)
+
+pheatmap(numeric_life_expectancy_data %>% scale(), 
+         show_rownames = FALSE, 
+         clustering_distance_rows = distance_matrix,
+         clustering_method = "ward.D2", 
+         cutree_rows = 6,
+         cutree_cols = length(colnames(numeric_life_expectancy_data %>% scale())),
+         angle_col = 45,
+         main = "Дендрограммы стран и переменных с heatmap")
+```
+
+*Страны разделены на шесть кластеров, переменные можно разделить на два больших кластера: в первом большинство переменных отрицательно коррелируют с ожидаемой продолжительностью жизни, во втором - положительно. В первых двух верхних кластерах стран относительно низкая ожидаемая продолжительность жизни, в следующих четырех - относительно высокая. Третий кластер стан выделяется относительно высокими показателями GDP и GNI. Видно, что в одном кластере часто оказываются страны с существенно различающимися анализируемыми показателями, для уменьшения этой разнородности стран внутри кластера можно попробовать увеличить количество кластеров стран*
+
+$~$
+
+## 7. PCA анализ
+
+```{r, fig.align = "center"}
+library(FactoMineR)
+
+data_pca <- prcomp(numeric_life_expectancy_data, 
+                        scale = T)
+
+fviz_eig(data_pca, addlabels = T, ylim = c(0, 43)) +
+  ggtitle("Доли вариации данных, объясняемые первыми десятью главными компонентами") +
+  xlab ("Главные компоненты") +
+  ylab ("Доля объясненной вариации")
+  
+```
+
+*Первая главная компонента объясняет почти 40% дисперсии данных, но далее показатели начинают падать постепенно и объяснение 75% вариации данных достигается только при включении в анализ 5-ти первых компонент.*
+
+```{r, fig.align = "center", error=FALSE}
+fviz_pca_var(data_pca, 
+             select.var = list(contrib = 9), 
+             col.var = "contrib", repel = TRUE, gradient.cols = c("orange", "red", "darkred")) 
+```
+
+*Первые две компоненты (Dim1 и Dim2) объясняют 51.5% дисперсии количественных данных. На графике выше отражены 9 переменных, вносящих наибольший вклад в первые две компоненты, где лидируют: DPT Immunization, HepB3 Immunization и Life expectancy. Но следующие за ними 6 компонент также вносят относительно значимый вклад в первые две компоненты.*
+
+*Три переменных вакцинации вносят схожий вклад в обе компоненты, но с первой коррелируют отрицательно, а со второй - положительно. Также можно выделить группу, переменных положительно коррелирующих с обоими главными компонентами: Life expectancy, Basic sanitation services и Urban population. Infant Mortality в наибольшей степени связана со второй компонентой и отрицательно с ней коррелирует. Rural population, полностью противоположна переменной Urban population*
+
+$~$
+
+## 8. Biplot график для PCA
+
+```{r, message=FALSE, warning=FALSE, fig.align = "center"}
+library(ggbiplot) 
+
+numeric_life_expectancy_data_with_continent_and_country <- life_expectancy_data %>% 
+  select(where (is.integer) | where (is.numeric), -Year, Country, continent)
+
+ggbiplot <- ggbiplot(data_pca,
+         scale=0, 
+         groups = as.factor(numeric_life_expectancy_data_with_continent_and_country$continent), 
+         ellipse = T,
+         alpha = 0.7,
+         varname.size = 2,
+         varname.adjust = 2,
+         varname.abbrev = FALSE) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  ggtitle("Biplot for the first two Principal Components")
+
+ggbiplot
+
+# ggplotly (ggbiplot)
+```
+
+$~$
+
+## 9. Интерпретация результатов выполненного PCA-анализа
+
+*Страны Европы отличаются наибольшими значениями Life expectancy, Basic sanitation services, Hospital beds. Страны Африки имеют наименьшие значения данных показателей, наибольшие - Infant Mortality, Mortality caused by road traffic injury, Non-communicable Mortality. Страны Америки и Азии имеют более оптимальные значения данных показателей при сравнении со странами Океании.*
+
+$~$
+
+## 10. Сравнение результатов отображения точек между алгоритмами PCA и UMAP
+
+```{r, message=FALSE, warning=FALSE, fig.align = "center"}
+library(tidymodels)
+library(embed)
+
+recipe(~., data = numeric_life_expectancy_data) %>%
+  step_normalize(all_predictors()) %>% 
+  step_umap(all_predictors()) %>%  
+  prep() %>%  
+  juice() %>%
+  ggplot(aes(UMAP1, UMAP2)) + 
+  geom_point(aes(color = as.factor(numeric_life_expectancy_data_with_continent_and_country$continent))) +
+  labs(color = NULL)
+```
+*Страны более агрегированы, однозначно делятся на две/три группы*
+
+$~$
+
+## 11. Неустойчивость PCA при удалении переменных
+
+*Повторение PCA после удаления пяти случайных переменных в данных:*
+
+```{r, message=FALSE, warning=FALSE, fig.align = "center"}
+library(FactoMineR)
+
+data_pca <- prcomp(numeric_life_expectancy_data %>% 
+  select (sample(1:19, 5, replace = FALSE)), scale = T)
+
+fviz_eig(data_pca, addlabels = T) +
+  ggtitle("Доли вариации данных, объясняемые первыми десятью главными компонентами") +
+  xlab ("Главные компоненты") +
+  ylab ("Доля объясненной вариации")
+
+fviz_pca_var(data_pca, 
+             select.var = list(contrib = 9), 
+             col.var = "contrib", repel = TRUE, gradient.cols = c("orange", "red", "darkred"))
+
+library(ggbiplot) 
+
+numeric_life_expectancy_data_with_continent_and_country <- life_expectancy_data %>% 
+  select(where (is.integer) | where (is.numeric), -Year, Country, continent)
+
+ggbiplot <- ggbiplot(data_pca,
+         scale=0, 
+         groups = as.factor(numeric_life_expectancy_data_with_continent_and_country$continent), 
+         ellipse = T,
+         alpha = 0.7,
+         varname.size = 2,
+         varname.adjust = 2,
+         varname.abbrev = FALSE) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  ggtitle("Biplot for the first two Principal Components")
+
+ggbiplot
+
+```
+
+*При повторении анализа несколько раз куммулятивный процент объяснённой вариации двумя первыми главными компонентами меняется от 55 до 85. Меняются направление и сила корреляции переменных с главными компонентами и основные переменные.*
+
+*Обнаруженные изменения связаны с тем, что PCA основан на значениях переменных и изменяется при изменении переменных.*
+
+$~$
+
+## 12. Неустойчивость PCA при добавлении новых переменных
+
+```{r, message=FALSE, warning=FALSE, fig.align = "center"}
+library(FactoMineR)
+
+numeric_life_expectancy_data <- 
+  life_expectancy_data %>% 
+  mutate (is.Africa = ifelse (life_expectancy_data$continent == "Africa", 1, 0),
+          is.Oceania = ifelse (life_expectancy_data$continent == "Oceania", 1, 0)) %>% 
+  select(where (is.integer) | where (is.numeric), -Year)
+  
+data_pca <- prcomp(numeric_life_expectancy_data, scale = T)
+
+fviz_eig(data_pca, addlabels = T) +
+  ggtitle("Доли вариации данных, объясняемые первыми десятью главными компонентами") +
+  xlab ("Главные компоненты") +
+  ylab ("Доля объясненной вариации")
+
+fviz_pca_var(data_pca, 
+             select.var = list(contrib = 9), 
+             col.var = "contrib", repel = TRUE, gradient.cols = c("orange", "red", "darkred"))
+
+library(ggbiplot) 
+
+numeric_life_expectancy_data_with_continent_and_country <- life_expectancy_data %>% 
+  select(where (is.integer) | where (is.numeric), -Year, Country, continent)
+
+ggbiplot <- ggbiplot(data_pca,
+         scale=0, 
+         groups = as.factor(numeric_life_expectancy_data_with_continent_and_country$continent), 
+         ellipse = T,
+         alpha = 0.7,
+         varname.size = 2,
+         varname.adjust = 2,
+         varname.abbrev = FALSE) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  ggtitle("Biplot for the first two Principal Components")
+
+ggbiplot
+```
+*Незначительно снизилась доля вариации, объясняемая двумя первыми компонентами (с 51.5% до 48.9%), существенных изменений в результатах PCA не произошло. Созданные дамми-колонки по сути являются категориальными, но наш анализ работает с количественными переменными.*
